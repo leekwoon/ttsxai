@@ -1,0 +1,7 @@
+fastspeech2
+flowtron
+mellotron
+neurox
+tacotron2
+ttsxai
+waveglow

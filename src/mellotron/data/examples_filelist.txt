@@ -1,0 +1,2 @@
+/nas/users/dahye/kw/tts/sxai/src/mellotron/data/example1.wav|exploring the expanses of space to keep our planet safe|1
+/nas/users/dahye/kw/tts/sxai/src/mellotron/data/example2.wav|and all the species that call it home|1
