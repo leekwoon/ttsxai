@@ -2,11 +2,7 @@
     adapted from:
     * https://github.com/fdalvi/NeuroX/blob/master/neurox/interpretation/linear_probe.py
 """
-
-import numpy as np
-import torch
 import torch.nn as nn
-from torch.autograd import Variable
 
 
 class LinearProbe(nn.Module):

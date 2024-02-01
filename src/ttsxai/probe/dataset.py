@@ -1,32 +1,50 @@
+import numpy as np
+
 import torch
 from torch.utils.data import Dataset
+
+from ttsxai.normalization import DatasetNormalizer
 
 
 class ProbeDataset(Dataset):
     def __init__(self, dataframe, input_columns, label_column):
         """
         Args:
-            dataframe (pandas.DataFrame): 데이터를 포함하고 있는 pandas DataFrame.
-            input_columns (list of str): 입력 특성으로 사용될 컬럼의 이름 목록.
-            label_column (str): 레이블로 사용될 컬럼의 이름.
+            dataframe (pandas.DataFrame): The pandas DataFrame containing the data.
+            input_columns (list of str): The names of the columns to be used as input features.
+            label_column (str): The name of the column to be used as the label.
         """
         self.dataframe = dataframe
         self.input_columns = input_columns
         self.label_column = label_column
 
+        self.X = np.stack(dataframe[input_columns].to_numpy())
+        self.y = dataframe[label_column].to_numpy()
+        if self.label_column in ['duration', 'pitch', 'energy']:
+            # ignore invalid data
+            valid_idxs = self.y > 0
+            self.X = self.X[valid_idxs]
+            self.y = self.y[valid_idxs]
+            # log scale
+            self.y = np.log(self.y) 
+        else:
+            raise NotImplementedError
+        
+        self.normalizer = DatasetNormalizer(self.X)
+
     def __len__(self):
-        return len(self.dataframe)
+        return len(self.y)
 
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        inputs = self.dataframe.iloc[idx][self.input_columns]
-        print(inputs)
-        label = self.dataframe.iloc[idx][self.label_column]
+        activation = self.normalizer.normalize(self.X[idx])
+        label = self.y[idx] 
 
-        # 데이터를 Tensor로 변환
-        inputs = torch.tensor(inputs, dtype=torch.float)
+        # to tensor
+        activation = torch.tensor(activation, dtype=torch.float)
         label = torch.tensor(label, dtype=torch.float)
 
-        return inputs, label
+        return activation, label
+

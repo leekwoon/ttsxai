@@ -119,8 +119,7 @@ def main():
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
 
-    # for mode in ['train', 'test', 'val']:
-    for mode in ['test', 'val']:
+    for mode in ['train', 'test', 'val']:
         # Dictionary keys to filter
         keys_to_filter = read_ljs_metadata(mode=mode).keys()
 
@@ -142,7 +141,7 @@ def main():
         data = parallel_load_pkl_files(pkl_files)
         df = pd.DataFrame(data)
         # save
-        df.to_pickle(os.path.join(args.save_dir, f'activation_df_{mode}.pkl'))
+        df.to_pickle(os.path.join(args.save_dir, f'{mode}_activation_df.pkl'))
 
 
 if __name__ == "__main__":
