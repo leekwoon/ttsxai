@@ -55,10 +55,10 @@ def train_probe(
     optimizer = torch.optim.Adam(probe.parameters(), lr=learning_rate)
 
     train_dataloader = cycle(torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, num_workers=1, shuffle=True, pin_memory=True
+        train_dataset, batch_size=batch_size, num_workers=1, shuffle=True, pin_memory=False
     ))
     val_dataloader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=batch_size, num_workers=1, shuffle=True, pin_memory=True
+        val_dataset, batch_size=batch_size, num_workers=1, shuffle=True, pin_memory=False
     )
 
     time_dict = {}

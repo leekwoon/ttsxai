@@ -7,7 +7,7 @@ from ttsxai.normalization import DatasetNormalizer
 
 
 class ProbeDataset(Dataset):
-    def __init__(self, dataframe, input_columns, label_column):
+    def __init__(self, dataframe, input_columns, label_column, neurons_to_keep=None):
         """
         Args:
             dataframe (pandas.DataFrame): The pandas DataFrame containing the data.
@@ -17,20 +17,27 @@ class ProbeDataset(Dataset):
         self.dataframe = dataframe
         self.input_columns = input_columns
         self.label_column = label_column
+        self.neurons_to_keep = neurons_to_keep
 
         self.X = np.stack(dataframe[input_columns].to_numpy())
         self.y = dataframe[label_column].to_numpy()
         if self.label_column in ['duration', 'pitch', 'energy']:
-            # ignore invalid data
+            # # ignore invalid data
             valid_idxs = self.y > 0
             self.X = self.X[valid_idxs]
             self.y = self.y[valid_idxs]
+
             # log scale
             self.y = np.log(self.y) 
+
+            if neurons_to_keep is not None:
+                self.X = self.X[:, neurons_to_keep]
+                print(f'only keep neurons {neurons_to_keep}')
         else:
             raise NotImplementedError
         
-        self.normalizer = DatasetNormalizer(self.X)
+    def make_normalizer(self, X):
+        self.normalizer = DatasetNormalizer(X)
 
     def __len__(self):
         return len(self.y)

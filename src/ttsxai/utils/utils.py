@@ -1,4 +1,6 @@
 import os
+import sys
+import shutil
 import random
 from contextlib import (
     contextmanager,
@@ -46,3 +48,15 @@ def set_seed(seed):
     torch.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+
+def confirm_and_delete_directory(directory):
+    """Check if a directory exists and ask the user to confirm its deletion."""
+    if os.path.exists(directory):
+        response = input(f"The directory '{directory}' already exists. Delete it? [y/n]: ")
+        if response.lower() == 'y':
+            shutil.rmtree(directory)  # Delete the directory
+            print(f"Deleted the directory: {directory}")
+        else:
+            print("Program exiting without deleting the directory.")
+            sys.exit()  # Exit the program

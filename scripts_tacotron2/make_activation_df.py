@@ -138,6 +138,8 @@ def main():
                     full_path = os.path.join(args.data_activation_dir, file)
                     pkl_files.append(full_path)
 
+        print(f'{mode} - {len(pkl_files)} files')
+
         data = parallel_load_pkl_files(pkl_files)
         df = pd.DataFrame(data)
         # save

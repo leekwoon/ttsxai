@@ -1,10 +1,11 @@
 import os
 import time
 import argparse
+import numpy as np
 import pandas as pd
 
 import ttsxai
-from ttsxai.utils.utils import set_seed
+from ttsxai.utils.utils import set_seed, confirm_and_delete_directory
 from ttsxai.probe.train import train_probe
 from ttsxai.probe.dataset import ProbeDataset
 from ttsxai.probe.linear_probe import LinearProbe
@@ -19,12 +20,27 @@ def parse_arguments(defaults):
     return vars(parser.parse_args())
 
 
-def setup_logdir(base_logdir, df_dir, label, seed):
+def setup_logdir(base_logdir, df_dir, label, target_layer, seed):
     """Setup and return log directory."""
     setting1 = os.path.basename(os.path.dirname(df_dir))
     setting2 = os.path.basename(df_dir).split('.')[0]
-    logdir = os.path.join(base_logdir, setting1, setting2, label, time.strftime('%Y_%m_%d_%H_%M_%S'), 'seed_' + str(seed))
+    # logdir = os.path.join(base_logdir, setting1, setting2, label, time.strftime('%Y_%m_%d_%H_%M_%S'), 'seed_' + str(seed))
+    logdir = os.path.join(base_logdir, setting1, setting2, label, target_layer, 'seed_' + str(seed))
     return logdir
+
+
+def neurons_to_keep(target_layer):
+    if target_layer == 'conv_0':
+        neurons_to_keep = np.arange(0, 512)
+    elif target_layer == 'conv_1':
+        neurons_to_keep = np.arange(512, 1024)
+    elif target_layer == 'conv_2':
+        neurons_to_keep = np.arange(1024, 1536)
+    elif target_layer == 'lstm':
+        neurons_to_keep = np.arange(1536, 2048)
+    else:
+        raise NotImplementedError
+    return neurons_to_keep
 
 
 def main():
@@ -37,29 +53,36 @@ def main():
         batch_size=256,
         learning_rate=0.001,
         use_gpu=True,
-        label='duration'
+        label='duration',
+        target_layer='lstm'
     )
 
     variant.update(parse_arguments(variant))
     set_seed(variant['seed'])
-    logdir = setup_logdir(variant['base_logdir'], variant['df_dir'], variant['label'], variant['seed'])
+    logdir = setup_logdir(variant['base_logdir'], variant['df_dir'], variant['label'], variant['target_layer'], variant['seed'])
+    confirm_and_delete_directory(logdir)
     setup_logger(variant=variant, log_dir=logdir)
 
-    """
-    TODO: normalizer
-    """
-
-    """
-    Debug
-    """
     train_df = pd.read_pickle(os.path.join(variant['df_dir'], 'train_activation_df.pkl'))
     val_df = pd.read_pickle(os.path.join(variant['df_dir'], 'val_activation_df.pkl'))
 
-    train_dataset = ProbeDataset(train_df, input_columns='activations', label_column=variant['label'])
-    val_dataset = ProbeDataset(val_df, input_columns='activations', label_column=variant['label'])
+    train_dataset = ProbeDataset(
+        train_df, 
+        input_columns='activations', 
+        label_column=variant['label'],
+        neurons_to_keep=neurons_to_keep(variant['target_layer'])
+    )
+    train_dataset.make_normalizer(train_dataset.X)
+    val_dataset = ProbeDataset(
+        val_df, 
+        input_columns='activations', 
+        label_column=variant['label'],
+        neurons_to_keep=neurons_to_keep(variant['target_layer'])
+    )
+    val_dataset.make_normalizer(train_dataset.X) # use train_dataset for val_dataset's normalizer
 
-    print(f'train dataset size: {len(train_dataset)}')
-    print(f'val dataset size: {len(val_dataset)}')
+    print(f'train dataset inputs shape: {train_dataset.X.shape}')
+    print(f'val dataset inputs size: {val_dataset.X.shape}')
 
     input_dim = len(train_dataset[0][0])
     probe = LinearProbe(input_dim, 1)
