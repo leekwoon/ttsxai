@@ -41,46 +41,46 @@ class Tacotron2Wrapper(nn.Module):
         self.activations = {}  # Dictionary to store activations
         self.hooks = []  # List to store hook references
         
-        # Add hooks for each conv layer
-        for idx, layer in enumerate(self.model.encoder.convolutions):
-            hook = layer.register_forward_hook(self._save_activation(f'conv_{idx}'))
-            self.hooks.append(hook)
+        # # Add hooks for each conv layer
+        # for idx, layer in enumerate(self.model.encoder.convolutions):
+        #     hook = layer.register_forward_hook(self._save_activation(f'conv_{idx}'))
+        #     self.hooks.append(hook)
         
-        # Add hook for LSTM
-        hook = self.model.encoder.lstm.register_forward_hook(self._save_activation('lstm'))
-        self.hooks.append(hook)
+        # # Add hook for LSTM
+        # hook = self.model.encoder.lstm.register_forward_hook(self._save_activation('lstm'))
+        # self.hooks.append(hook)
 
         self.modified_activations = {}  # Dictionary to store modified activations
 
-    def _save_activation(self, name):
-        def hook(module, input, output):
-            # if name in self.modified_activations:
-            #     if name.startswith('conv'):  # For conv layers
-            #         print(name, output.shape) # torch.Size([1, 512, 27])
-            #         # return output
-            #         return self.modified_activations[name]
-            #     else:
-            #         print(name, output[0].shape) # torch.Size([1, 27, 512])
-            #         return output
+    # def _save_activation(self, name):
+    #     def hook(module, input, output):
+    #         # if name in self.modified_activations:
+    #         #     if name.startswith('conv'):  # For conv layers
+    #         #         print(name, output.shape) # torch.Size([1, 512, 27])
+    #         #         # return output
+    #         #         return self.modified_activations[name]
+    #         #     else:
+    #         #         print(name, output[0].shape) # torch.Size([1, 27, 512])
+    #         #         return output
 
-            if name.startswith('conv'):  # For conv layers
-                self.activations[name] = F.relu(output.transpose(1, 2))#.cpu().numpy()
-                # Override with modified activations
-                if name in self.modified_activations:
-                    return self.modified_activations[name].transpose(1, 2)
-            else:  # For LSTM
-                # We're interested in the output tensor, not the hidden states
-                self.activations[name] = output[0] # .cpu().numpy()
-                if name in self.modified_activations:
-                    return (self.modified_activations[name], output[1])
-        return hook
+    #         if name.startswith('conv'):  # For conv layers
+    #             self.activations[name] = F.relu(output.transpose(1, 2))#.cpu().numpy()
+    #             # Override with modified activations
+    #             if name in self.modified_activations:
+    #                 return self.modified_activations[name].transpose(1, 2)
+    #         else:  # For LSTM
+    #             # We're interested in the output tensor, not the hidden states
+    #             self.activations[name] = output[0] # .cpu().numpy()
+    #             if name in self.modified_activations:
+    #                 return (self.modified_activations[name], output[1])
+    #     return hook
 
     def set_modified_activations(self, modified_activations):
         """Set modified activations to use in forward pass."""
         self.modified_activations = modified_activations
 
     @torch.no_grad()
-    def forward(self, text):
+    def forward(self, text, alignment=None):
         phone = text2phone(text)
         token = phone2token(phone)
         tokens = torch.tensor(token[None]).long().to(self.device)
@@ -89,19 +89,44 @@ class Tacotron2Wrapper(nn.Module):
         embedded_inputs = self.model.embedding(tokens).transpose(1, 2)
         ####### encoder_outputs = self.encoder.inference(embedded_inputs)
         x = embedded_inputs
-        for conv in self.model.encoder.convolutions:
-            x = F.dropout(F.relu(conv(x)), 0.5, self.model.encoder.training)
+        for i, conv in enumerate(self.model.encoder.convolutions):
+
+            if f'conv_{i}' in self.modified_activations.keys():
+                print(i, 'hihi')
+                x = self.modified_activations[f'conv_{i}'].transpose(1, 2)
+            else:
+                x = F.dropout(F.relu(conv(x)), 0.5, self.model.encoder.training)
+            print(x.shape)
+            # print('no')
+
+            self.activations[f'conv_{i}'] = x.transpose(1, 2)
 
         x = x.transpose(1, 2)
 
         self.model.encoder.lstm.flatten_parameters()
         outputs, _ = self.model.encoder.lstm(x)
-        if self.modified_activations:
+        if 'lstm' in self.modified_activations.keys():
+            print('### modify lstm')
             outputs = self.modified_activations['lstm']
-        encoder_outputs = outputs
 
-        mel_outputs, gate_outputs, alignments = self.model.decoder.inference(
-            encoder_outputs)
+        self.activations['lstm'] = outputs
+
+        encoder_outputs = outputs
+        print('encoder_outputs.shape=', encoder_outputs.shape)
+        # encoder_outputs_modified = torch.cat(
+        #     (encoder_outputs[:, :6, :], encoder_outputs[:, 7:, :]), dim=1
+        # )
+        # encoder_outputs = encoder_outputs_modified
+        # print('encoder_outputs.shape=', encoder_outputs.shape)
+
+        if alignment is None:
+            mel_outputs, gate_outputs, alignments = self.model.decoder.inference(
+                encoder_outputs)
+        else:
+            rhythm = torch.tensor(alignment[None]).to(self.device)
+            rhythm = rhythm.permute(1, 0, 2)
+            mel_outputs, gate_outputs, alignments = self.model.decoder.inference_noattention(
+                encoder_outputs, rhythm)       
 
         mel_outputs_postnet = self.model.postnet(mel_outputs)
         mel_outputs_postnet = mel_outputs + mel_outputs_postnet
@@ -128,7 +153,7 @@ class Tacotron2Wrapper(nn.Module):
         }
         for k, v in self.activations.items():
             self.activations[k] = v[0].cpu().numpy()
-        info['activations'] = self.activations
+        info['activations'] = self.activations.copy()
 
         return mel, info
 
@@ -271,6 +296,7 @@ def get_arpabet(word, cmudict, index=0):
     
 
 def text2phone(text):
+    text = text.replace('-', ' ')
     words = re.findall(r'\S*\{.*?\}\S*|\S+', text)
     phone = ' '.join([get_arpabet(word, cmudict) for word in words]) 
     return phone

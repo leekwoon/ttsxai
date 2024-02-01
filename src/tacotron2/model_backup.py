@@ -63,7 +63,7 @@ class Attention(nn.Module):
         return energies
 
     def forward(self, attention_hidden_state, memory, processed_memory,
-                attention_weights_cat, mask, attention_weights=None):
+                attention_weights_cat, mask):
         """
         PARAMS
         ------
@@ -73,14 +73,13 @@ class Attention(nn.Module):
         attention_weights_cat: previous and cummulative attention weights
         mask: binary mask for padded data
         """
-        if attention_weights is None:
-            alignment = self.get_alignment_energies(
-                attention_hidden_state, processed_memory, attention_weights_cat)
+        alignment = self.get_alignment_energies(
+            attention_hidden_state, processed_memory, attention_weights_cat)
 
-            if mask is not None:
-                alignment.data.masked_fill_(mask, self.score_mask_value)
+        if mask is not None:
+            alignment.data.masked_fill_(mask, self.score_mask_value)
 
-            attention_weights = F.softmax(alignment, dim=1)
+        attention_weights = F.softmax(alignment, dim=1)
         attention_context = torch.bmm(attention_weights.unsqueeze(1), memory)
         attention_context = attention_context.squeeze(1)
 
@@ -338,7 +337,7 @@ class Decoder(nn.Module):
 
         return mel_outputs, gate_outputs, alignments
 
-    def decode(self, decoder_input, attention_weights=None):
+    def decode(self, decoder_input):
         """ Decoder step using stored states, attention and memory
         PARAMS
         ------
@@ -361,7 +360,7 @@ class Decoder(nn.Module):
              self.attention_weights_cum.unsqueeze(1)), dim=1)
         self.attention_context, self.attention_weights = self.attention_layer(
             self.attention_hidden, self.memory, self.processed_memory,
-            attention_weights_cat, self.mask, attention_weights)
+            attention_weights_cat, self.mask)
 
         self.attention_weights_cum += self.attention_weights
         decoder_input = torch.cat(
@@ -454,39 +453,6 @@ class Decoder(nn.Module):
 
         return mel_outputs, gate_outputs, alignments
 
-    def inference_noattention(self, memory, attention_map):
-        """ Decoder inference
-        PARAMS
-        ------
-        memory: Encoder outputs
-
-        RETURNS
-        -------
-        mel_outputs: mel outputs from the decoder
-        gate_outputs: gate outputs from the decoder
-        alignments: sequence of attention weights from the decoder
-        """
-        decoder_input = self.get_go_frame(memory)
-
-        self.initialize_decoder_states(memory, mask=None)
-
-        mel_outputs, gate_outputs, alignments = [], [], []
-        for i in range(len(attention_map)):
-            attention = attention_map[i]
-            decoder_input = self.prenet(decoder_input)
-            mel_output, gate_output, alignment = self.decode(decoder_input, attention)
-
-            mel_outputs += [mel_output.squeeze(1)]
-            gate_outputs += [gate_output]
-            alignments += [alignment]
-
-            decoder_input = mel_output
-
-        mel_outputs, gate_outputs, alignments = self.parse_decoder_outputs(
-            mel_outputs, gate_outputs, alignments)
-
-        return mel_outputs, gate_outputs, alignments
-
 
 class Tacotron2(nn.Module):
     def __init__(self, hparams):
@@ -553,20 +519,6 @@ class Tacotron2(nn.Module):
         encoder_outputs = self.encoder.inference(embedded_inputs)
         mel_outputs, gate_outputs, alignments = self.decoder.inference(
             encoder_outputs)
-
-        mel_outputs_postnet = self.postnet(mel_outputs)
-        mel_outputs_postnet = mel_outputs + mel_outputs_postnet
-
-        outputs = self.parse_output(
-            [mel_outputs, mel_outputs_postnet, gate_outputs, alignments])
-
-        return outputs
-
-    def inference_noattention(self, inputs, attention_map):
-        embedded_inputs = self.embedding(inputs).transpose(1, 2)
-        encoder_outputs = self.encoder.inference(embedded_inputs)
-        mel_outputs, gate_outputs, alignments = self.decoder.inference_noattention(
-            encoder_outputs, attention_map)
 
         mel_outputs_postnet = self.postnet(mel_outputs)
         mel_outputs_postnet = mel_outputs + mel_outputs_postnet

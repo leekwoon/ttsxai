@@ -138,7 +138,7 @@ class FastSpeech2Wrapper(nn.Module):
         }
         for k, v in self.activations.items():
             self.activations[k] = v[0].cpu().numpy()
-        info['activations'] = self.activations
+        info['activations'] = self.activations.copy()
         
         return mel, info
 

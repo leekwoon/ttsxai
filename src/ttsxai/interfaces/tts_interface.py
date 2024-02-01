@@ -19,8 +19,8 @@ class TTSInterface(nn.Module):
         self.hop_length = self.text2mel.hop_length
 
     @torch.no_grad()
-    def forward(self, text):
-        mel, text2mel_info = self.text2mel(text) # (freq_dim, time_dim)
+    def forward(self, text, **kwargs):
+        mel, text2mel_info = self.text2mel(text, **kwargs) # (freq_dim, time_dim)
         wave = self.mel2wave(mel) # (1, ...)
         length = mel.shape[1] * self.hop_length
         wave = wave[:length]
