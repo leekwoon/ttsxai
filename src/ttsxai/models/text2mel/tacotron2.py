@@ -63,11 +63,9 @@ class Tacotron2Wrapper(nn.Module):
                 # print(i, 'hihi')
                 x = self.modified_activations[f'conv_{i}'].transpose(1, 2)
             else:
-                x = conv(x)
-            # save before activation
-            activations[f'conv_{i}'] = x.transpose(1, 2)
+                x = F.dropout(F.relu(conv(x)), 0.5, self.model.encoder.training)
+                activations[f'conv_{i}'] = x.transpose(1, 2)
 
-            x = F.dropout(F.relu(x), 0.5, self.model.encoder.training)
             # print(x.shape)
             # print('no')            
 
